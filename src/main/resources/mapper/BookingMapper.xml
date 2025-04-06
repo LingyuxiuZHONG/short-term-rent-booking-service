@@ -4,19 +4,25 @@
 <mapper namespace="com.example.bookingservice.mapper.BookingMapper">
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO booking (
-            listing_id, guest_id, host_id,
+            listing_id, booking_user_id, host_id,
             start_date, end_date, guest_count,
-            total_amount, discount_amount
+            total_amount
         )
         VALUES (
-                   #{listingId}, #{guestId}, #{hostId},
+                   #{listingId}, #{bookingUserId}, #{hostId},
                    #{startDate}, #{endDate}, #{guestCount},
-                   #{totalAmount}, #{discountAmount}
+                   #{totalAmount}
                )
     </insert>
 
     <select id="getBookingById" resultType="com.example.bookingservice.model.Booking">
         SELECT * FROM booking WHERE id = #{id}
+    </select>
+
+    <select id="getBookingsByListingId">
+        SELECT * FROM booking
+        WHERE listing_id = #{listingId}
+        ORDER BY start_date
     </select>
 
 
@@ -35,15 +41,16 @@
     <update id="updateStatusToCancelled">
         UPDATE booking
         SET status = #{status},
-            cancelled_at = #{cancelledAt}
+            cancelled_at = #{cancelledAt},
+            cancel_reason = #{cancelReason}
         WHERE id = #{id}
     </update>
 
-    <select id="getBookingsByGuestId" resultType="Booking">
+    <select id="getBookingsByBookingUserId" resultType="Booking">
         SELECT *
         FROM booking
-        WHERE guest_id = #{guestId}
-        ORDER BY created_at DESC
+        WHERE booking_user_id = #{bookingUserId}
+        ORDER BY start_date DESC
     </select>
 
     <select id="getBookingsByHostId" resultType="Booking">
@@ -72,7 +79,37 @@
         AND status IN (0,1,3)
     </select>
 
+    <update id="updateBookingStatus">
+        UPDATE booking
+        <set>
+            status = #{code}
+        </set>
+        WHERE id = #{id}
+    </update>
 
+
+
+    <update id="updateBookingAfterPay">
+        UPDATE booking
+        <set>
+            status = #{code},
+            payment_transaction_id = #{tradeNo},
+            paid_amount = #{paidAmount}
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateCancelInfo">
+        UPDATE booking
+        <set>
+            cancel_reason = #{cancelReason},
+            cancelled_by = #{cancelledBy},
+            status = #{status},
+            refund_transaction_id = #{refundTransactionId},
+            cancelled_at = #{cancelledAt}
+        </set>
+        WHERE id = #{id}
+    </update>
 
 
 </mapper>

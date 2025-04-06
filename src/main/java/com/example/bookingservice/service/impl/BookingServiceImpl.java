@@ -1,20 +1,23 @@
 package com.example.bookingservice.service.impl;
 
+import com.example.bookingservice.dto.BookingCancelDTO;
 import com.example.bookingservice.dto.BookingCreateDTO;
 import com.example.bookingservice.mapper.BookingMapper;
 import com.example.bookingservice.model.Booking;
 import com.example.common.dto.BookingStatus;
 import com.example.bookingservice.service.BookingService;
 import com.example.common.exception.BusinessException;
+import com.example.feignapi.clients.ListingClient;
+import com.example.feignapi.clients.PaymentClient;
 import com.example.feignapi.dto.CheckDateAvailabilityDTO;
+import com.example.feignapi.dto.RefundDTO;
 import com.example.feignapi.dto.UpdateBookingPaymentDTO;
+import com.example.feignapi.vo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
-import com.example.feignapi.vo.BookingVO;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,8 +31,13 @@ public class BookingServiceImpl implements BookingService {
 
     private final BookingMapper bookingMapper;
 
+    private final ListingClient listingClient;
+
+    private final PaymentClient paymentClient;
+
+
     @Override
-    public BookingVO createBooking(BookingCreateDTO bookingCreateDTO) {
+    public Long createBooking(BookingCreateDTO bookingCreateDTO) {
         log.info("创建预订开始，房源ID：{}，入住日期：{}，退房日期：{}", bookingCreateDTO.getListingId(), bookingCreateDTO.getStartDate(), bookingCreateDTO.getEndDate());
 
         // 检查房源是否可用
@@ -42,9 +50,7 @@ public class BookingServiceImpl implements BookingService {
         bookingMapper.insert(booking);
         log.info("预订创建成功，预订ID：{}", booking.getId());
 
-        // 查询完整的预订信息
-        Booking fullBooking = bookingMapper.getBookingById(booking.getId());
-        return convertToBookingVO(fullBooking);
+        return booking.getId();
     }
 
     @Override
@@ -62,17 +68,17 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    public void cancelBooking(Long id) {
+    public BookingAndPaymentInfo cancelBooking(Long id, BookingCancelDTO bookingCancelDTO) {
         log.info("取消预订开始，预订ID：{}", id);
 
-        // 判断订单是否存在
+        // 判断预订是否存在
         Booking booking = bookingMapper.getBookingById(id);
         if (booking == null) {
             log.warn("订单不存在，预订ID：{}", id);
             throw new BusinessException("订单不存在");
         }
 
-        // 校验当前订单状态
+        // 校验当前预订状态
         Integer status = booking.getStatus();
         if (status.equals(BookingStatus.CANCELLED.getCode())) {
             log.warn("订单已取消，不能重复操作，预订ID：{}", id);
@@ -82,31 +88,38 @@ public class BookingServiceImpl implements BookingService {
             log.warn("订单已完成，不能取消，预订ID：{}", id);
             throw new BusinessException("订单已完成，不能取消");
         }
-        if (status.equals(BookingStatus.REFUNDED.getCode())) {
-            log.warn("订单已退款，不能取消，预订ID：{}", id);
-            throw new BusinessException("订单已退款，不能取消");
-        }
 
-        // 更新订单状态为取消
-        bookingMapper.updateStatusToCancelled(booking.getId(), BookingStatus.CANCELLED.getCode(), LocalDateTime.now());
-        log.info("订单已取消，预订ID：{}", id);
 
-        // 如果已经支付，则调用支付微服务进行退款
-        if (booking.getPaidAmount() != null && booking.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
-            // TODO 调用支付微服务，退款
-            log.info("订单已支付，正在进行退款处理，预订ID：{}", id);
-        }
+
+        // 调用支付服务
+        log.info("订单已支付，正在进行退款处理，预订ID：{}", id);
+        RefundDTO refundDTO = new RefundDTO();
+        refundDTO.setBookingId(id);
+        refundDTO.setRefundAmount(bookingCancelDTO.getRefundAmount());
+        refundDTO.setReason(bookingCancelDTO.getCancelReason());
+        PaymentVO paymentVO = paymentClient.refund(refundDTO).getBody().getData();
+
+        // 更新
+        log.info("退款成功，更新数据库，预订ID：{}", id);
+        booking.setStatus(BookingStatus.CANCELLED.getCode());
+        booking.setRefundTransactionId(paymentVO.getRefundTransactionId());
+        booking.setCancelledAt(LocalDateTime.now());
+        BeanUtils.copyProperties(bookingCancelDTO,booking);
+        bookingMapper.updateCancelInfo(booking);
+
+        BookingVO bookingVO = convertToBookingVO(booking);
+        return new BookingAndPaymentInfo(bookingVO, paymentVO);
     }
 
     @Override
-    public List<BookingVO> getBookingsByGuestId(Long guestId) {
+    public List<BookingCard> getBookingsByBookingUserId(Long guestId) {
         log.info("查询客人预订记录，客人ID：{}", guestId);
 
-        List<Booking> bookings = bookingMapper.getBookingsByGuestId(guestId);
+        List<Booking> bookings = bookingMapper.getBookingsByBookingUserId(guestId);
         log.info("查询到预订记录数量：{}", bookings.size());
 
         return bookings.stream()
-                .map(this::convertToBookingVO)
+                .map(this::convertToBookingCard)
                 .collect(Collectors.toList());
     }
 
@@ -154,6 +167,23 @@ public class BookingServiceImpl implements BookingService {
         return listingIds;
     }
 
+    @Override
+    public List<BookingVO> getBookingsByListingId(Long listingId) {
+        List<Booking> list = bookingMapper.getBookingsByListingId(listingId);
+        return list.stream()
+                .map(this::convertToBookingVO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public void updateBookingStatus(Long id, int code) {
+        bookingMapper.updateBookingStatus(id, code);
+    }
+
+    @Override
+    public void updateBookingAfterPay(Long id, BookingUpdateAfterPayDTO dto) {
+        bookingMapper.updateBookingAfterPay(id, dto.getCode(), dto.getTradeNo(), dto.getPaid_amount());
+    }
 
 
     private void countConflictingBookings(Long listingId, LocalDate startDate, LocalDate endDate) {
@@ -167,6 +197,16 @@ public class BookingServiceImpl implements BookingService {
         BookingVO bookingVO = new BookingVO();
         BeanUtils.copyProperties(booking,bookingVO);
         return bookingVO;
+    }
+
+    private BookingCard convertToBookingCard(Booking booking) {
+        BookingCard bookingCard = new BookingCard();
+        BeanUtils.copyProperties(booking,bookingCard);
+
+        ListingDetail listingDetail = listingClient.getListingById(booking.getListingId()).getBody().getData();
+        bookingCard.setListingDetail(listingDetail);
+
+        return bookingCard;
     }
 
 

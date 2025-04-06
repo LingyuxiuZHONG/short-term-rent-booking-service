@@ -1,9 +1,13 @@
 package com.example.bookingservice.controller;
 
 
+import com.example.bookingservice.dto.BookingCancelDTO;
 import com.example.bookingservice.dto.BookingCreateDTO;
 import com.example.bookingservice.service.BookingService;
 import com.example.common.ApiResponse;
+import com.example.feignapi.vo.BookingAndPaymentInfo;
+import com.example.feignapi.vo.BookingCard;
+import com.example.feignapi.vo.BookingUpdateAfterPayDTO;
 import com.example.feignapi.vo.BookingVO;
 import com.example.feignapi.dto.CheckDateAvailabilityDTO;
 import com.example.feignapi.dto.UpdateBookingPaymentDTO;
@@ -21,9 +25,9 @@ public class BookingController {
     private final BookingService bookingService;
 
     @PostMapping()
-    public ResponseEntity<ApiResponse<BookingVO>> createBooking(@Valid @RequestBody BookingCreateDTO dto) {
-        BookingVO bookingVO = bookingService.createBooking(dto);
-        return ResponseEntity.ok(ApiResponse.success("预定创建成功", bookingVO));
+    public ResponseEntity<ApiResponse<Long>> createBooking(@Valid @RequestBody BookingCreateDTO dto) {
+        Long bookingId = bookingService.createBooking(dto);
+        return ResponseEntity.ok(ApiResponse.success("预定创建成功", bookingId));
     }
 
     @GetMapping("/{id}")
@@ -32,16 +36,22 @@ public class BookingController {
         return ResponseEntity.ok(ApiResponse.success("查询成功",bookingVO));
     }
 
-    @PutMapping("/{id}/cancel")
-    public ResponseEntity<ApiResponse<String>> cancelBooking(@PathVariable Long id) {
-        bookingService.cancelBooking(id);
-        return ResponseEntity.ok(ApiResponse.success("取消成功"));
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<ApiResponse<BookingAndPaymentInfo>> cancelBooking(@PathVariable Long id, @RequestBody BookingCancelDTO bookingCancelDTO) {
+        BookingAndPaymentInfo bookingAndPaymentInfo = bookingService.cancelBooking(id, bookingCancelDTO);
+        return ResponseEntity.ok(ApiResponse.success("取消成功", bookingAndPaymentInfo));
     }
 
 
-    @GetMapping("/guest/{guestId}")
-    public ResponseEntity<ApiResponse<List<BookingVO>>> getGuestBookings(@PathVariable Long guestId) {
-        List<BookingVO> bookings = bookingService.getBookingsByGuestId(guestId);
+    @GetMapping("/bookingUser/{bookingUserId}")
+    public ResponseEntity<ApiResponse<List<BookingCard>>> getBookingsByGuestId(@PathVariable Long bookingUserId) {
+        List<BookingCard> bookings = bookingService.getBookingsByBookingUserId(bookingUserId);
+        return ResponseEntity.ok(ApiResponse.success("查询成功",bookings));
+    }
+
+    @GetMapping("/listing/{listingId}")
+    ResponseEntity<ApiResponse<List<BookingVO>>> getBookingsByListingId(@PathVariable("listingId") Long listingId){
+        List<BookingVO> bookings = bookingService.getBookingsByListingId(listingId);
         return ResponseEntity.ok(ApiResponse.success("查询成功",bookings));
     }
 
@@ -61,6 +71,18 @@ public class BookingController {
     public ResponseEntity<ApiResponse<List<Long>>> checkDateAvailability(@RequestBody CheckDateAvailabilityDTO checkDateAvailabilityDTO){
         List<Long> listingIds = bookingService.checkDateAvailability(checkDateAvailabilityDTO);
         return ResponseEntity.ok(ApiResponse.success("查询成功", listingIds));
+    }
+
+    @PutMapping("/{id}/status")
+    ResponseEntity<ApiResponse<String>> updateBookingStatus(@PathVariable Long id,@RequestParam int code){
+        bookingService.updateBookingStatus(id,code);
+        return ResponseEntity.ok(ApiResponse.success("更新成功"));
+    }
+
+    @PutMapping("/{id}/success")
+    ResponseEntity<ApiResponse<String>> updateBookingAfterPay(@PathVariable Long id, @RequestBody BookingUpdateAfterPayDTO dto){
+        bookingService.updateBookingAfterPay(id, dto);
+        return ResponseEntity.ok(ApiResponse.success("更新成功"));
     }
 
 }

@@ -12,7 +12,7 @@ public class BookingCreateDTO {
     private Long listingId;
 
     @NotNull(message = "房客ID不能为空")
-    private Long guestId;
+    private Long bookingUserId;
 
     @NotNull(message = "房东ID不能为空")
     private Long hostId;
@@ -34,6 +34,6 @@ public class BookingCreateDTO {
     private BigDecimal totalAmount;
 
 
-    @DecimalMin(value = "0.00", inclusive = true, message = "优惠金额不能小于0")
-    private BigDecimal discountAmount;
+//    @DecimalMin(value = "0.00", inclusive = true, message = "优惠金额不能小于0")
+//    private BigDecimal discountAmount;
 }

@@ -11,7 +11,7 @@ import java.util.Date;
 public class Booking {
     private Long id;  // 预订ID
     private Long listingId;  // 房源ID
-    private Long guestId;  // 房客ID
+    private Long bookingUserId;  // 预订人ID
     private Long hostId;  // 房东ID
     private LocalDate startDate;  // 入住日期
     private LocalDate endDate;  // 退房日期
@@ -26,4 +26,7 @@ public class Booking {
     private LocalDateTime cancelledAt;  // 取消时间
     private LocalDateTime completedAt;  // 订单完成时间
     private String refundTransactionId;
+    private Integer cancelledBy;
+    private String cancelReason;
+    private Integer cancelPolicy;
 }
